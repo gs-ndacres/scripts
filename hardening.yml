@@ -1,0 +1,71 @@
+---
+ - hosts: sftp-major
+   tasks:
+    - name: install libselinux-python for ansible support
+      yum: name=libselinux-python state=present
+    - name: update all packages
+      yum: name=* state=latest
+#    - name: copy root public key
+#      shell: cp /etc/ssh/authorized_keys/root/root-sftp.pub /etc/ssh/authorized_keys/root/authorized_keys
+#    - name: move authkey
+#      lineinfile: dest=/etc/ssh/sshd_config backup=yes state=present regexp='AuthorizedKeysFile' line='AuthorizedKeysFile       /etc/ssh/authorized_keys/%u/authorized_keys'
+    - name: ssh timeout
+      lineinfile: dest=/etc/ssh/sshd_config backup=yes state=present regexp='ClientAliveInterval' line='ClientAliveInterval       9000'
+    - name: ssh max sessions
+      lineinfile: dest=/etc/ssh/sshd_config backup=yes state=present regexp='ClientAliveCountMax' line='ClientAliveCountMax        0'
+    - name:  restart sshd
+      service: name=sshd state=restarted
+    - name: stop iptables
+      #we use a network firewall
+      service: name=iptables state=stopped enabled=no
+      tags:
+        - runonce
+    - name: install libselinux-python for ansible support
+      yum: name=libselinux-python state=present
+    - name: update all packages
+      yum: name=* state=latest
+    - name: The audit system must be configured to audit all attempts to alter system time through adjtimex
+      lineinfile: dest=/etc/audit/audit.rules state=present line='-a always,exit -F arch=b64 -S adjtimex -S settimeofday -S clock_settime -k audit_time_rules'
+    - name: The audit system must be configured to audit all attempts to alter system time through /etc/localtime.
+      lineinfile: dest=/etc/audit/audit.rules state=present line='-w /etc/localtime -p wa -k audit_time_rules'
+    - name: The system must not accept IPv4 source-routed packets on any interface
+      sysctl: name=net.ipv4.conf.all.accept_source_route value=0 state=present
+    - name: The system must not accept ICMPv4 redirect packets on any interface.
+      sysctl: name=net.ipv4.conf.all.accept_redirects value=0 state=present
+    - name: The system must not accept ICMPv4 secure redirect packets on any interface.
+      sysctl: name=net.ipv4.conf.all.secure_redirects value=0 state=present
+    - name: The system must log Martian packets.
+      sysctl: name=net.ipv4.conf.all.log_martians value=1 state=present
+    - name: The system must not accept ICMPv4 secure redirect packets by default
+      sysctl: name=net.ipv4.conf.default.secure_redirects value=0 state=present
+#    - name: The system default umask  for all shells must be 077 ,
+#     #this breaks public/private key authentication, we don't know why, must investigate
+#      lineinfile: dest=/etc/{{item}} backup=yes regexp='umask 022' line='    umask 077'
+#      with_items:
+#       - profile
+#       - bashrc
+#       - csh.cshrc
+    - name: password charactartistics like contain at least one numeric character, at least four characters be changed between the old require use of a special character, at least one lowercase alphabetic character
+      lineinfile: dest='/etc/pam.d/{{item}}' backup=yes state=present regexp="password    requisite     pam_cracklib.so" line="password    requisite     pam_cracklib.so try_first_pass retry=3 type= difok=4 ocredit=-1 lcredit=-1 dcredit=-1 ucredit=-1"
+      with_items:
+       - password-auth
+       - password-auth-ac
+       - system-auth-ac
+    - name: disable accounts after three consecutive login failures
+      lineinfile: dest=/etc/pam.d/{{item}} backup=yes state=present insertafter='pam_unix.so' line='auth [default=die] pam_faillock.so authfail deny=3 unlock_time=604800 fail_interval=900'
+      with_items:
+        - password-auth
+        - system-auth
+    - name: To configure the system to lock out accounts after a number of incorrect logon attempts and require an administrator to unlock the account using "pam_faillock.so"
+      lineinfile: dest=/etc/pam.d/{{item}} backup=yes state=present insertafter='pam_unix.so' line='auth required pam_faillock.so authsucc deny=3 unlock_time=604800 fail_interval=900'
+      with_items:
+        - password-auth
+        - system-auth
+    - name: Minimum password length
+      lineinfile: dest=/etc/login.defs backup=yes state=present regexp='PASS_MIN_LEN' line='PASS_MIN_LEN   14'
+    - name: Password minimum age for new accounts
+      lineinfile: dest=/etc/login.defs backup=yes state=present regexp='PASS_MIN_DAYS' line='PASS_MIN_DAYS  1'
+    - name: Password maximum age for new accounts
+      lineinfile: dest=/etc/login.defs backup=yes state=present regexp='PASS_MAX_DAYS' line='PASS_MAX_DAYS  60'
+    - name: Number of days after a password expires (which signifies inactivity) until an account is permanently disabled)
+      lineinfile: dest=/etc/default/useradd backup=yes state=present regexp='INACTIVE' line='INACTIVE=35'
